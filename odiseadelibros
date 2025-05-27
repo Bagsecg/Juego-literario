@@ -1,0 +1,632 @@
+// JUEGO DE MOTOCICLETAS MEJORADO CON SALTO COMO POWERUP
+
+// Constantes del juego
+const SPAWN_RATES = {
+  BOOKS: 60,
+  POWERUPS: 300,
+  OBSTACLES: 180
+};
+const GAME_DURATION = 60000; // 60 segundos
+const MAGNET_DURATION = 5000; // 5 segundos
+const JUMP_DURATION = 8000; // 8 segundos para el powerup de salto
+const BOOK_SPEED_INCREMENT = 0.5;
+
+// Variables del juego
+let moto1, moto2;
+let books = [];
+let powerUps = [];
+let obstacles = [];
+let score1 = 0, score2 = 0;
+let groundY;
+let bookSpeed = 5;
+let gameStartTime;
+
+// Variables de estado del juego
+let gameState = "menu"; // "menu", "nameInput", "playing", "gameover"
+let magnetEffect1 = false, magnetEffect2 = false;
+let jumpEffect1 = false, jumpEffect2 = false; // Nuevos efectos de salto
+
+// Variables de nombres de jugadores
+let player1Name = "";
+let player2Name = "";
+let currentInputPlayer = 1;
+let nameInputs = ["", ""];
+
+// Variables para el fondo en movimiento
+let bgX1 = 0, bgX2, groundX1 = 0, groundX2;
+
+// Imágenes
+let motoImg, bookImg, bgImg, magnetImg, obstacleImg, jumpImg;
+
+function preload() {
+  motoImg = loadImage('https://i.imgur.com/6vYttwo.jpeg');
+  bookImg = loadImage('https://i.imgur.com/ixTkBA0.png');
+  bgImg = loadImage('https://i.imgur.com/ByPgukt.png');
+  magnetImg = loadImage('https://i.imgur.com/A5g3ZBP.jpeg');
+  obstacleImg = loadImage('https://i.imgur.com/BSgXPDU.jpeg');
+  // Usaremos una imagen temporal para el powerup de salto
+  jumpImg = loadImage('https://i.imgur.com/A5g3ZBP.jpeg'); // Placeholder - puedes cambiar por una imagen de salto
+}
+
+function setup() {
+  createCanvas(800, 400);
+  groundY = height - 50;
+  bgX2 = width;
+  groundX2 = width;
+}
+
+function draw() {
+  // Fondo en movimiento (siempre activo)
+  drawMovingBackground();
+  
+  switch(gameState) {
+    case "menu":
+      drawMainMenu();
+      break;
+    case "nameInput":
+      drawNameInputScreen();
+      break;
+    case "playing":
+      drawGame();
+      break;
+    case "gameover":
+      drawGameOver();
+      break;
+  }
+}
+
+function drawMovingBackground() {
+  image(bgImg, bgX1, 0, width, height);
+  image(bgImg, bgX2, 0, width, height);
+  
+  bgX1 -= 2;
+  bgX2 -= 2;
+  if (bgX1 <= -width) bgX1 = bgX2 + width;
+  if (bgX2 <= -width) bgX2 = bgX1 + width;
+  
+  // Suelo en movimiento
+  fill(50);
+  rect(groundX1, groundY, width, 50);
+  rect(groundX2, groundY, width, 50);
+  groundX1 -= 2;
+  groundX2 -= 2;
+  if (groundX1 <= -width) groundX1 = groundX2 + width;
+  if (groundX2 <= -width) groundX2 = groundX1 + width;
+}
+
+function drawMainMenu() {
+  // Overlay semi-transparente
+  fill(0, 0, 0, 150);
+  rect(0, 0, width, height);
+  
+  // Título del juego
+  fill(255, 215, 0);
+  textAlign(CENTER);
+  textFont('Arial, sans-serif'); // Fuente sans-serif
+  textSize(40);
+  text("🏍 La odisea de libros 🏍", width/2, height/2 - 80);
+  
+  // Subtítulo
+  fill(255);
+  textFont('Arial, sans-serif'); // Fuente sans-serif
+  textSize(24);
+  text("Atrapa la mayor cantidad de libros posible", width/2, height/2 - 40);
+  
+  // Instrucciones
+  textFont('Arial, sans-serif'); // Fuente sans-serif
+  textSize(18);
+  text("Presiona ENTER para configurar jugadores", width/2, height/2 + 20);
+  text("o ESPACIO para jugar rápido", width/2, height/2 + 50);
+  
+  // Controles actualizados
+  textFont('Arial, sans-serif'); // Fuente sans-serif
+  textSize(14);
+  fill(200);
+  text("P1: ← → (Recoger powerup de salto para ↑)", width/2, height/2 + 80);
+  text("P2: A D (Recoger powerup de salto para W)", width/2, height/2 + 100);
+}
+
+function drawNameInputScreen() {
+  // Overlay
+  fill(0, 0, 0, 150);
+  rect(0, 0, width, height);
+  
+  // Título
+  fill(255, 215, 0);
+  textAlign(CENTER);
+  textSize(36);
+  text("Configurar Jugadores", width/2, height/2 - 100);
+  
+  // Input del jugador actual
+  fill(255);
+  textSize(20);
+  text(Nombre del Jugador ${currentInputPlayer}:, width/2, height/2 - 40);
+  
+  // Caja de input
+  let inputText = nameInputs[currentInputPlayer - 1];
+  fill(currentInputPlayer === 1 ? color(100, 150, 255) : color(255, 100, 150));
+  rect(width/2 - 150, height/2 - 10, 300, 40, 5);
+  
+  fill(255);
+  textAlign(CENTER);
+  textSize(18);
+  text(inputText + (frameCount % 30 < 15 ? "|" : ""), width/2, height/2 + 15);
+  
+  // Instrucciones
+  textSize(14);
+  fill(200);
+  text("Escribe el nombre y presiona ENTER", width/2, height/2 + 60);
+  if (currentInputPlayer === 1) {
+    text("(Deja vacío para 'Jugador 1')", width/2, height/2 + 80);
+  } else {
+    text("(Deja vacío para 'Jugador 2')", width/2, height/2 + 80);
+  }
+}
+
+function drawGame() {
+  // Verificar tiempo límite
+  if (millis() - gameStartTime > GAME_DURATION) {
+    gameState = "gameover";
+    return;
+  }
+  
+  // Incrementar velocidad gradualmente
+  if (frameCount % 600 === 0) bookSpeed += BOOK_SPEED_INCREMENT;
+  
+  // Inicializar motos si no existen
+  if (!moto1 || !moto2) {
+    moto1 = new Moto(width / 3, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, player1Name);
+    moto2 = new Moto((2 * width) / 3, 65, 68, 87, player2Name); // A, D, W
+  }
+  
+  // Actualizar y mostrar motos
+  moto1.update();
+  moto1.show();
+  moto2.update();
+  moto2.show();
+  
+  // Generar elementos
+  if (frameCount % SPAWN_RATES.BOOKS === 0) books.push(new Book());
+  if (frameCount % SPAWN_RATES.POWERUPS === 0) powerUps.push(new PowerUp());
+  if (frameCount % SPAWN_RATES.OBSTACLES === 0) obstacles.push(new Obstacle());
+  
+  // Actualizar libros
+  updateBooks();
+  
+  // Actualizar powerups
+  updatePowerUps();
+  
+  // Actualizar obstáculos
+  updateObstacles();
+  
+  // Mostrar UI
+  drawGameUI();
+  
+  // Verificar condición de victoria
+  if (score1 >= 20 || score2 >= 20) gameState = "gameover";
+}
+
+function updateBooks() {
+  for (let i = books.length - 1; i >= 0; i--) {
+    books[i].update();
+    
+    // Efecto magnético
+    if (magnetEffect1 && dist(books[i].x, books[i].y, moto1.x, moto1.y) < 150) {
+      books[i].x += (moto1.x - books[i].x) * 0.05;
+      books[i].y += (moto1.y - books[i].y) * 0.05;
+    }
+    if (magnetEffect2 && dist(books[i].x, books[i].y, moto2.x, moto2.y) < 150) {
+      books[i].x += (moto2.x - books[i].x) * 0.05;
+      books[i].y += (moto2.y - books[i].y) * 0.05;
+    }
+    
+    books[i].show();
+    
+    // Verificar colisiones
+    if (books[i].hits(moto1)) {
+      score1++;
+      books.splice(i, 1);
+    } else if (books[i].hits(moto2)) {
+      score2++;
+      books.splice(i, 1);
+    } else if (books[i].offScreen()) {
+      books.splice(i, 1);
+    }
+  }
+}
+
+function updatePowerUps() {
+  for (let i = powerUps.length - 1; i >= 0; i--) {
+    powerUps[i].update();
+    powerUps[i].show();
+    
+    if (powerUps[i].hits(moto1)) {
+      powerUps[i].applyEffect(1);
+      powerUps.splice(i, 1);
+    } else if (powerUps[i].hits(moto2)) {
+      powerUps[i].applyEffect(2);
+      powerUps.splice(i, 1);
+    } else if (powerUps[i].offScreen()) {
+      powerUps.splice(i, 1);
+    }
+  }
+}
+
+function updateObstacles() {
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    obstacles[i].update();
+    obstacles[i].show();
+    
+    if (obstacles[i].hits(moto1)) {
+      score1 = max(0, score1 - 1); // Solo resta 1 punto
+      obstacles.splice(i, 1); // Remover obstáculo
+    } else if (obstacles[i].hits(moto2)) {
+      score2 = max(0, score2 - 1);
+      obstacles.splice(i, 1);
+    } else if (obstacles[i].offScreen()) {
+      obstacles.splice(i, 1);
+    }
+  }
+}
+
+function drawGameUI() {
+  // Barra superior con información
+  fill(0, 0, 0, 100);
+  rect(0, 0, width, 100);
+  
+  // Puntuaciones con nombres
+  fill(100, 150, 255);
+  textAlign(LEFT);
+  textSize(18);
+  text(${player1Name}: ${score1}, 20, 25);
+  
+  fill(255, 100, 150);
+  text(${player2Name}: ${score2}, 20, 50);
+  
+  // Tiempo restante
+  let timeLeft = max(0, GAME_DURATION - (millis() - gameStartTime));
+  let seconds = Math.ceil(timeLeft / 1000);
+  fill(255, 255, 0);
+  textAlign(RIGHT);
+  text(Tiempo: ${seconds}s, width - 20, 25);
+  
+  // Velocidad actual
+  fill(255, 200, 100);
+  text(Vel. Caída: ${bookSpeed.toFixed(1)}, width - 20, 50);
+  
+  // Indicadores de efectos
+  if (magnetEffect1) {
+    fill(100, 150, 255, 150);
+    ellipse(moto1.x + 25, moto1.y - 20, 60, 60);
+    textAlign(CENTER);
+    textSize(12);
+    fill(255);
+    text("IMÁN", moto1.x + 25, moto1.y - 15);
+  }
+  
+  if (jumpEffect1) {
+    fill(255, 215, 0, 150);
+    ellipse(moto1.x + 25, moto1.y - 20, 60, 60);
+    textAlign(CENTER);
+    textSize(12);
+    fill(255);
+    text("SALTO", moto1.x + 25, moto1.y - 15);
+  }
+  
+  if (magnetEffect2) {
+    fill(255, 100, 150, 150);
+    ellipse(moto2.x + 25, moto2.y - 20, 60, 60);
+    textAlign(CENTER);
+    textSize(12);
+    fill(255);
+    text("IMÁN", moto2.x + 25, moto2.y - 15);
+  }
+  
+  if (jumpEffect2) {
+    fill(255, 215, 0, 150);
+    ellipse(moto2.x + 25, moto2.y - 20, 60, 60);
+    textAlign(CENTER);
+    textSize(12);
+    fill(255);
+    text("SALTO", moto2.x + 25, moto2.y - 15);
+  }
+}
+
+function drawGameOver() {
+  // Overlay
+  fill(0, 0, 0, 180);
+  rect(0, 0, width, height);
+  
+  // Título
+  fill(255, 100, 100);
+  textAlign(CENTER);
+  textSize(40);
+  text("¡JUEGO TERMINADO!", width/2, height/2 - 80);
+  
+  // Resultados
+  textSize(24);
+  fill(255);
+  text(${player1Name}: ${score1} puntos, width/2, height/2 - 30);
+  text(${player2Name}: ${score2} puntos, width/2, height/2);
+  
+  // Ganador
+  textSize(28);
+  if (score1 > score2) {
+    fill(100, 255, 100);
+    text(🏆 ¡${player1Name} GANA! 🏆, width/2, height/2 + 40);
+  } else if (score2 > score1) {
+    fill(100, 255, 100);
+    text(🏆 ¡${player2Name} GANA! 🏆, width/2, height/2 + 40);
+  } else {
+    fill(255, 255, 100);
+    text("🤝 ¡EMPATE! 🤝", width/2, height/2 + 40);
+  }
+  
+  // Instrucciones
+  textSize(16);
+  fill(200);
+  text("Presiona R para reiniciar o M para volver al menú", width/2, height/2 + 80);
+}
+
+function keyPressed() {
+  switch(gameState) {
+    case "menu":
+      if (keyCode === ENTER) {
+        gameState = "nameInput";
+        currentInputPlayer = 1;
+        nameInputs = ["", ""];
+      } else if (key === ' ') {
+        startQuickGame();
+      }
+      break;
+      
+    case "nameInput":
+      if (keyCode === ENTER) {
+        if (currentInputPlayer === 1) {
+          player1Name = nameInputs[0] || "Jugador 1";
+          currentInputPlayer = 2;
+        } else {
+          player2Name = nameInputs[1] || "Jugador 2";
+          startGame();
+        }
+      } else if (keyCode === BACKSPACE) {
+        if (nameInputs[currentInputPlayer - 1].length > 0) {
+          nameInputs[currentInputPlayer - 1] = nameInputs[currentInputPlayer - 1].slice(0, -1);
+        }
+      } else if (key.length === 1 && nameInputs[currentInputPlayer - 1].length < 12) {
+        nameInputs[currentInputPlayer - 1] += key;
+      }
+      break;
+      
+    case "gameover":
+      if (key === 'r' || key === 'R') {
+        resetGame();
+        startGame();
+      } else if (key === 'm' || key === 'M') {
+        resetGame();
+        gameState = "menu";
+      }
+      break;
+  }
+}
+
+function startQuickGame() {
+  player1Name = "Jugador 1";
+  player2Name = "Jugador 2";
+  startGame();
+}
+
+function startGame() {
+  gameState = "playing";
+  gameStartTime = millis();
+  score1 = 0;
+  score2 = 0;
+  moto1 = new Moto(width / 3, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, player1Name);
+  moto2 = new Moto((2 * width) / 3, 65, 68, 87, player2Name);
+}
+
+function resetGame() {
+  score1 = 0;
+  score2 = 0;
+  books = [];
+  powerUps = [];
+  obstacles = [];
+  bookSpeed = 5;
+  magnetEffect1 = false;
+  magnetEffect2 = false;
+  jumpEffect1 = false;
+  jumpEffect2 = false;
+  moto1 = null;
+  moto2 = null;
+}
+
+// Función de colisión que faltaba
+function collideRectRect(x1, y1, w1, h1, x2, y2, w2, h2) {
+  return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+}
+
+// Clases del juego
+class Moto {
+  constructor(x, leftKey, rightKey, upKey, playerName) {
+    this.x = x;
+    this.y = groundY - 60;
+    this.vy = 0;
+    this.gravity = 1.5;
+    this.jumpForce = -15;
+    this.width = 50;
+    this.height = 50;
+    this.leftKey = leftKey;
+    this.rightKey = rightKey;
+    this.upKey = upKey;
+    this.playerName = playerName;
+  }
+
+  update() {
+    if (keyIsDown(this.leftKey)) this.x -= 5;
+    if (keyIsDown(this.rightKey)) this.x += 5;
+    
+    // Solo permite saltar si tiene el powerup activo
+    let canJump = (this.playerName === player1Name && jumpEffect1) || 
+                  (this.playerName === player2Name && jumpEffect2);
+    
+    if (keyIsDown(this.upKey) && this.onGround() && canJump) {
+      this.vy = this.jumpForce;
+    }
+
+    this.vy += this.gravity;
+    this.y += this.vy;
+    
+    if (this.onGround()) {
+      this.vy = 0;
+      this.y = groundY - this.height;
+    }
+    
+    // Limitar movimiento horizontal
+    this.x = constrain(this.x, 0, width - this.width);
+  }
+
+  onGround() {
+    return this.y >= groundY - this.height;
+  }
+
+  show() {
+    image(motoImg, this.x, this.y, this.width, this.height);
+    
+    // Mostrar nombre del jugador sobre la moto
+    fill(255);
+    textAlign(CENTER);
+    textSize(12);
+    text(this.playerName, this.x + this.width/2, this.y - 5);
+  }
+}
+
+class Book {
+  constructor() {
+    this.x = random(50, width - 50);
+    this.y = -30; // Empiezan arriba de la pantalla
+    this.width = 30;
+    this.height = 30;
+    this.fallSpeed = bookSpeed;
+  }
+
+  update() {
+    this.y += this.fallSpeed; // Caen hacia abajo
+  }
+
+  show() {
+    image(bookImg, this.x, this.y, this.width, this.height);
+  }
+
+  offScreen() {
+    return this.y > height; // Salen por abajo
+  }
+
+  hits(moto) {
+    return collideRectRect(this.x, this.y, this.width, this.height, 
+                          moto.x, moto.y, moto.width, moto.height);
+  }
+}
+
+class PowerUp {
+  constructor() {
+    this.x = random(50, width - 50);
+    this.y = -30; // Empiezan arriba
+    this.width = 30;
+    this.height = 30;
+    this.fallSpeed = bookSpeed * 0.8; // Caen un poco más lento
+    this.type = random() < 0.5 ? "magnet" : "jump"; // 50% probabilidad de cada tipo
+  }
+
+  update() {
+    this.y += this.fallSpeed; // Caen hacia abajo
+  }
+
+  show() {
+    // Efecto de brillo para el powerup
+    push();
+    translate(this.x + this.width/2, this.y + this.height/2);
+    rotate(frameCount * 0.02);
+    
+    if (this.type === "magnet") {
+      tint(100, 150, 255, 200 + sin(frameCount * 0.1) * 55);
+      image(magnetImg, -this.width/2, -this.height/2, this.width, this.height);
+    } else {
+      tint(255, 215, 0, 200 + sin(frameCount * 0.1) * 55);
+      image(jumpImg, -this.width/2, -this.height/2, this.width, this.height);
+    }
+    
+    noTint();
+    pop();
+    
+    // Mostrar indicador del tipo de powerup
+    fill(255);
+    textAlign(CENTER);
+    textSize(10);
+    if (this.type === "magnet") {
+      text("M", this.x + this.width/2, this.y + this.height + 12);
+    } else {
+      text("J", this.x + this.width/2, this.y + this.height + 12);
+    }
+  }
+
+  offScreen() {
+    return this.y > height; // Salen por abajo
+  }
+
+  hits(moto) {
+    return collideRectRect(this.x, this.y, this.width, this.height, 
+                          moto.x, moto.y, moto.width, moto.height);
+  }
+
+  applyEffect(player) {
+    if (this.type === "magnet") {
+      if (player === 1) {
+        magnetEffect1 = true;
+        setTimeout(() => magnetEffect1 = false, MAGNET_DURATION);
+      } else if (player === 2) {
+        magnetEffect2 = true;
+        setTimeout(() => magnetEffect2 = false, MAGNET_DURATION);
+      }
+    } else if (this.type === "jump") {
+      if (player === 1) {
+        jumpEffect1 = true;
+        setTimeout(() => jumpEffect1 = false, JUMP_DURATION);
+      } else if (player === 2) {
+        jumpEffect2 = true;
+        setTimeout(() => jumpEffect2 = false, JUMP_DURATION);
+      }
+    }
+  }
+}
+
+class Obstacle {
+  constructor() {
+    this.x = random(50, width - 50);
+    this.y = -30; // Empiezan arriba
+    this.width = 30;
+    this.height = 30;
+    this.fallSpeed = bookSpeed * 1.2; // Caen más rápido que los libros
+  }
+
+  update() {
+    this.y += this.fallSpeed; // Caen hacia abajo
+  }
+
+  show() {
+    // Efecto de advertencia para obstáculos
+    push();
+    tint(255, 100 + sin(frameCount * 0.2) * 155);
+    image(obstacleImg, this.x, this.y, this.width, this.height);
+    noTint();
+    pop();
+  }
+
+  offScreen() {
+    return this.y > height; // Salen por abajo
+  }
+
+  hits(moto) {
+    return collideRectRect(this.x, this.y, this.width, this.height, 
+                          moto.x, moto.y, moto.width, moto.height);
+  }
+}
