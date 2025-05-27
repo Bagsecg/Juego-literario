@@ -104,7 +104,7 @@ function drawMainMenu() {
   textAlign(CENTER);
   textFont('Arial, sans-serif'); // Fuente sans-serif
   textSize(40);
-  text("🏍 La odisea de libros 🏍", width/2, height/2 - 80);
+  text("🏍️ La odisea de libros 🏍️", width/2, height/2 - 80);
   
   // Subtítulo
   fill(255);
@@ -140,7 +140,7 @@ function drawNameInputScreen() {
   // Input del jugador actual
   fill(255);
   textSize(20);
-  text(Nombre del Jugador ${currentInputPlayer}:, width/2, height/2 - 40);
+  text(`Nombre del Jugador ${currentInputPlayer}:`, width/2, height/2 - 40);
   
   // Caja de input
   let inputText = nameInputs[currentInputPlayer - 1];
@@ -278,21 +278,21 @@ function drawGameUI() {
   fill(100, 150, 255);
   textAlign(LEFT);
   textSize(18);
-  text(${player1Name}: ${score1}, 20, 25);
+  text(`${player1Name}: ${score1}`, 20, 25);
   
   fill(255, 100, 150);
-  text(${player2Name}: ${score2}, 20, 50);
+  text(`${player2Name}: ${score2}`, 20, 50);
   
   // Tiempo restante
   let timeLeft = max(0, GAME_DURATION - (millis() - gameStartTime));
   let seconds = Math.ceil(timeLeft / 1000);
   fill(255, 255, 0);
   textAlign(RIGHT);
-  text(Tiempo: ${seconds}s, width - 20, 25);
+  text(`Tiempo: ${seconds}s`, width - 20, 25);
   
   // Velocidad actual
   fill(255, 200, 100);
-  text(Vel. Caída: ${bookSpeed.toFixed(1)}, width - 20, 50);
+  text(`Vel. Caída: ${bookSpeed.toFixed(1)}`, width - 20, 50);
   
   // Indicadores de efectos
   if (magnetEffect1) {
@@ -346,17 +346,17 @@ function drawGameOver() {
   // Resultados
   textSize(24);
   fill(255);
-  text(${player1Name}: ${score1} puntos, width/2, height/2 - 30);
-  text(${player2Name}: ${score2} puntos, width/2, height/2);
+  text(`${player1Name}: ${score1} puntos`, width/2, height/2 - 30);
+  text(`${player2Name}: ${score2} puntos`, width/2, height/2);
   
   // Ganador
   textSize(28);
   if (score1 > score2) {
     fill(100, 255, 100);
-    text(🏆 ¡${player1Name} GANA! 🏆, width/2, height/2 + 40);
+    text(`🏆 ¡${player1Name} GANA! 🏆`, width/2, height/2 + 40);
   } else if (score2 > score1) {
     fill(100, 255, 100);
-    text(🏆 ¡${player2Name} GANA! 🏆, width/2, height/2 + 40);
+    text(`🏆 ¡${player2Name} GANA! 🏆`, width/2, height/2 + 40);
   } else {
     fill(255, 255, 100);
     text("🤝 ¡EMPATE! 🤝", width/2, height/2 + 40);
@@ -628,5 +628,6 @@ class Obstacle {
   hits(moto) {
     return collideRectRect(this.x, this.y, this.width, this.height, 
                           moto.x, moto.y, moto.width, moto.height);
-  }
+  }
 }
+
