@@ -1,0 +1,720 @@
+// JUEGO "ODISEA DE LIBROS DEL SERVICIO DE PRÉSTAMO DE LIBROS"
+// MODIFICADO: 12/06/2025
+
+// Constantes del juego
+const SPAWN_RATES = {
+  BOOKS: 60,
+  POWERUPS: 300, // Para modo recolectar
+  OBSTACLES: 180, // Para modo recolectar
+  DODGE_OBSTACLES_INITIAL: 150,
+};
+const GAME_DURATION = 60000;
+const MAGNET_DURATION = 9000;
+const JUMP_DURATION = 10000;
+const SHIELD_DURATION = 11000;
+const SPEED_DURATION = 10000;
+const DOUBLE_POINTS_DURATION = 8000;
+const OBSTACLE_ACCELERATION = 0.26;
+
+// Variables del juego
+let moto1, moto2;
+let books = [];
+let powerUps = [];
+let obstacles = [];
+let dodgeObstacles = [];
+let score1 = 0, score2 = 0;
+let groundY;
+let obstáculosBaseSpeed = 4;
+let gameStartTime;
+let elapsedTimeSeconds = 0;
+// Variable para manejar el tiempo de pausa
+let pauseStartTime = 0;
+
+
+// Variables de estado del juego
+let gameState = "menu";
+let gameMode = "collect";
+let magnetEffect1 = false, magnetEffect2 = false;
+let jumpEffect1 = false, jumpEffect2 = false;
+let shieldEffect1 = false, shieldEffect2 = false;
+let speedEffect1 = false, speedEffect2 = false;
+let doublePointsEffect1 = false, doublePointsEffect2 = false;
+
+// Variables de nombres de jugadores
+let player1Name = "";
+let player2Name = "";
+let currentInputPlayer = 1;
+let nameInputs = ["", ""];
+
+// Variables para el fondo en movimiento
+let bgX1 = 0, bgX2, groundX1 = 0, groundX2;
+
+// Imágenes
+let motoImg, bookImg, bgImg, magnetImg, obstacleImg, jumpImg, shieldImg, speedImg, doublePointsImg, dodgeObstacleImg;
+let qrCodeImg; // NUEVO: Variable para la imagen del código QR
+
+// Fuente
+let titleFont;
+// Variable para saber si la fuente cargó correctamente
+let fontLoaded = false;
+
+// Logros
+const ACHIEVEMENT_DEFINITIONS = [
+  { time: 10, name: "Primer Párrafo", unlocked: false, message: "✍️ ¡Logro: Primer Párrafo! " },
+  { time: 20, name: "Cuentista Ágil", unlocked: false, message: "📖 ¡Logro: Cuentista Ágil! " },
+  { time: 60, name: "Maratón de Comas", unlocked: false, message: "📜 ¡Logro: Maratón de Comas! " },
+  { time: 100, name: "Novelista Audaz", unlocked: false, message: "📚 ¡Logro: Novelista Audaz! " },
+  { time: 150, name: "Leyenda Literaria", unlocked: false, message: "🏆 ¡Logro: Leyenda Literaria! " }
+];
+let currentAchievements = [];
+let achievementMessage = "";
+let achievementMessageTimeout = 0;
+
+function preload() {
+  // Se cambia la fuente a "Bangers", una fuente de estilo caricatura disponible en Google Fonts.
+  titleFont = loadFont('https://fonts.gstatic.com/s/bangers/v24/FeVQS0BTqb0h60ACL5k.ttf', () => { fontLoaded = true; }, () => { fontLoaded = false; });
+
+  // Carga de imágenes
+  motoImg = loadImage('https://i.imgur.com/5yIhe5y.png');
+  bookImg = loadImage('https://i.imgur.com/ixTkBA0.png');
+  bgImg = loadImage('https://i.imgur.com/ByPgukt.png');
+  magnetImg = loadImage('https://i.imgur.com/A5g3ZBP.jpeg');
+  obstacleImg = loadImage('https://i.imgur.com/BSgXPDU.jpeg');
+  jumpImg = loadImage('https://i.imgur.com/A5g3ZBP.jpeg');
+  shieldImg = loadImage('https://i.imgur.com/A5g3ZBP.jpeg');
+  speedImg = loadImage('https://i.imgur.com/A5g3ZBP.jpeg');
+  doublePointsImg = loadImage('https://i.imgur.com/A5g3ZBP.jpeg');
+  dodgeObstacleImg = loadImage('https://i.imgur.com/MhnbwZH.png');
+  
+  // NUEVO: Carga de la imagen del código QR
+  qrCodeImg = loadImage('https://i.imgur.com/KcuuUOC.png');
+}
+
+function setup() {
+  createCanvas(1280, 720);
+  groundY = height - 50;
+  bgX2 = width;
+  groundX2 = width;
+  initializeAchievements();
+}
+
+function initializeAchievements() {
+  currentAchievements = JSON.parse(JSON.stringify(ACHIEVEMENT_DEFINITIONS));
+}
+
+function draw() {
+  drawMovingBackground();
+
+  switch (gameState) {
+    case "menu": drawMainMenu(); break;
+    // NUEVO: Se añade el caso para la nueva pantalla informativa
+    case "infoScreen": drawInfoScreen(); break;
+    case "modeSelect": drawModeSelect(); break;
+    case "nameInput": drawNameInputScreen(); break;
+    case "playing": drawGame(); break;
+    case "paused": drawPauseMenu(); break;
+    case "gameover": drawGameOver(); break;
+  }
+  displayAchievementMessage();
+}
+
+function displayAchievementMessage() {
+  if (achievementMessage && millis() < achievementMessageTimeout) {
+    push();
+    fill(255, 223, 0, 220);
+    rectMode(CENTER);
+    let msgWidth = textWidth(achievementMessage) + 40;
+    rect(width / 2, height - 40, msgWidth, 50, 10);
+    fill(0);
+    textAlign(CENTER, CENTER);
+    textSize(16);
+    text(achievementMessage, width / 2, height - 40);
+    pop();
+  } else if (millis() >= achievementMessageTimeout) {
+    achievementMessage = "";
+  }
+}
+
+function drawMovingBackground() {
+  image(bgImg, bgX1, 0, width, height);
+  image(bgImg, bgX2, 0, width, height);
+  
+  if (gameState === 'paused') return;
+
+  let currentBgSpeed = 1;
+  if (gameMode === "dodge" && gameState === "playing") {
+    currentBgSpeed = obstáculosBaseSpeed * 0.5;
+  }
+
+  bgX1 -= currentBgSpeed; bgX2 -= currentBgSpeed;
+  if (bgX1 <= -width) bgX1 = bgX2 + width;
+  if (bgX2 <= -width) bgX2 = bgX1 + width;
+
+  fill(50); noStroke();
+  rect(groundX1, groundY, width, 50); rect(groundX2, groundY, width, 50);
+  groundX1 -= currentBgSpeed; groundX2 -= currentBgSpeed;
+  if (groundX1 <= -width) groundX1 = groundX2 + width;
+  if (groundX2 <= -width) groundX2 = groundX1 + width;
+}
+
+function drawMainMenu() {
+  fill(0, 0, 0, 150); rect(0, 0, width, height);
+  
+  textAlign(CENTER);
+  if (fontLoaded) {
+    textFont(titleFont);
+  } else {
+    textFont('sans-serif'); 
+  }
+  textSize(90);
+  fill(255, 215, 0);
+  stroke(0);
+  strokeWeight(6);
+  text("La odisea de libros", width / 2, height / 2 - 70);
+  
+  textFont('sans-serif');
+  noStroke();
+
+  fill(255); textSize(34);
+  text("¡Lectura sobre ruedas!", width / 2, height / 2 - 20); textSize(18);
+  // MODIFICADO: El texto ahora dirige a la pantalla informativa
+  text("Presiona ENTER para continuar", width / 2, height / 2 + 30);
+  text("o ESPACIO para juego rápido (modo recolectar)", width / 2, height / 2 + 60); textSize(14); fill(200);
+  text("P1: ↑ (Saltar) / ← → (Moverse) / ↓ (Caída Rápida)", width / 2, height / 2 + 90);
+  text("P2 (Modo Recolectar): W (Saltar) A D (Moverse)", width / 2, height / 2 + 110);
+  text("ESC para Pausar", width / 2, height - 20);
+}
+
+// NUEVO: Función para dibujar la pantalla informativa con el QR
+function drawInfoScreen() {
+    fill(0, 0, 0, 180);
+    rect(0, 0, width, height);
+
+    textFont('sans-serif');
+    textAlign(CENTER, CENTER);
+
+    // Dibuja el texto superior con ajuste de línea automático
+    fill(255);
+    textSize(22);
+    let topText = "Este juego está inspirado en el maravilloso servicio gratuito de préstamo de libros de la Gran Biblioteca Pública de Lima. Nuestro motorizado se encargará de llevarte los libros hasta la puerta de tu casa y recogerlos cuando termines de disfrutarlos. Así, puedes concentrarte en la magia de la lectura sin preocupaciones.\n\nSi deseas disfrutar de nuestro servicio escanea el código QR de registro.";
+    text(topText, width / 8, height / 2 - 250, width * 0.8, 200);
+
+    // Dibuja el código QR
+    let qrSize = 160;
+    image(qrCodeImg, width / 2 - qrSize / 2, height / 1.9 - qrSize / 2 + 10, qrSize, qrSize);
+
+    // Dibuja el texto inferior
+    textSize(22);
+    let bottomText = "¡Diviértete, supera tu récord y descubre todas las sorpresas que tenemos para ti en los distintos modos de juego!";
+    text(bottomText, width / 9, height / 2+ 140, width * 0.8, 50);
+
+    // Instrucción para continuar
+    fill(255, 215, 0);
+    textSize(25);
+    text("Presiona ENTER para seleccionar modo de juego", width / 2, height - 80);
+}
+
+
+function drawPauseMenu() {
+    drawGameUI();
+    fill(0, 0, 0, 180);
+    rect(0, 0, width, height);
+    textFont('sans-serif');
+    textAlign(CENTER);
+    fill(255, 215, 0);
+    textSize(48);
+    text("PAUSA", width / 2, height / 2 - 80);
+
+    fill(255);
+    textSize(20);
+    text("Presiona 'ESC' para continuar", width / 2, height / 2);
+    text("Presiona 'R' para reiniciar", width / 2, height / 2 + 40);
+    text("Presiona 'M' para ir al menú principal", width / 2, height / 2 + 80);
+}
+
+
+function drawModeSelect() {
+  fill(0, 0, 0, 150); rect(0, 0, width, height); fill(255, 215, 0); textAlign(CENTER); textSize(36);
+  textFont('sans-serif');
+  text("Selecciona Modo de Juego", width / 2, height / 2 - 100);
+
+  fill(gameMode === "collect" ? color(100, 255, 100) : color(255, 150, 100)); rect(width / 2 - 150, height / 2 - 60, 310, 58, 5);
+  fill(0); textSize(20); text("1 - MODO RECOLECTAR", width / 2, height / 2 - 30); textSize(14);
+  text("¡Recolecta los libros prestados!", width / 2, height / 2 - 10);
+
+  fill(gameMode === "dodge" ? color(100, 255, 100) : color(255, 150, 100)); rect(width / 2 - 150, height / 2 + 20, 310, 58, 5);
+  fill(0); textSize(20); text("2 - MODO ESQUIVAR", width / 2, height / 2 + 50); textSize(14);
+  text("¡sobrevive el mayor tiempo posible!", width / 2, height / 2 + 70); 
+
+  fill(200); textSize(16);
+  text("Presiona 1 o 2 para seleccionar, ENTER para continuar", width / 2, height / 2 + 110);
+  text("Presiona ESC para volver al menú principal", width / 2, height / 2 + 140);
+}
+
+function drawNameInputScreen() {
+  fill(0, 0, 0, 150); rect(0, 0, width, height); fill(255, 215, 0); textAlign(CENTER); textSize(36);
+  textFont('sans-serif');
+  text("Configurar Jugadores", width / 2, height / 2 - 100); fill(200); textSize(16);
+  text(`Modo: ${gameMode === "collect" ? "RECOLECTAR" : "ESQUIVAR"}`, width / 2, height / 2 - 70);
+
+  let playerLabel = (gameMode === "dodge") ? "Jugador" : `Jugador ${currentInputPlayer}`;
+  fill(255); textSize(20); text(`Nombre del ${playerLabel}:`, width / 2, height / 2 - 40);
+
+  let inputText = nameInputs[currentInputPlayer - 1];
+  fill(currentInputPlayer === 1 ? color(100, 150, 255) : color(255, 100, 150)); rect(width / 2 - 150, height / 2 - 10, 300, 40, 5);
+  fill(0); textAlign(CENTER); textSize(18); text(inputText + (frameCount % 30 < 15 ? "|" : ""), width / 2, height / 2 + 15);
+
+  textSize(14); fill(200); text("Escribe el nombre y presiona ENTER", width / 2, height / 2 + 60);
+  let defaultName = (gameMode === "dodge") ? "Lector Intrépido" : `Jugador ${currentInputPlayer}`;
+  text(`(Deja vacío para '${defaultName}')`, width / 2, height / 2 + 80);
+}
+
+function drawGame() {
+  if (gameMode === "dodge") {
+    elapsedTimeSeconds = (millis() - gameStartTime) / 1000;
+    score1 = floor(elapsedTimeSeconds);
+    updateAchievements(elapsedTimeSeconds);
+    obstáculosBaseSpeed = 3 + elapsedTimeSeconds * OBSTACLE_ACCELERATION;
+  } else {
+    if (millis() - gameStartTime > GAME_DURATION) { gameState = "gameover"; return; }
+    if (frameCount % 400 === 0) obstáculosBaseSpeed += 0.2;
+  }
+  
+  if (!moto1) moto1 = new Moto(width / (gameMode === "dodge" ? 4 : 4), LEFT_ARROW, RIGHT_ARROW, UP_ARROW, player1Name);
+  if (gameMode === "collect" && !moto2) moto2 = new Moto((3 * width) / 4, 65, 68, 87, player2Name);
+
+  moto1.update(); moto1.show();
+  if (gameMode === "collect" && moto2) { moto2.update(); moto2.show(); }
+
+  if (gameMode === "collect") {
+    if (frameCount % SPAWN_RATES.BOOKS === 0) books.push(new Book());
+    if (frameCount % SPAWN_RATES.POWERUPS === 0) powerUps.push(new PowerUp());
+    if (frameCount % SPAWN_RATES.OBSTACLES === 0) obstacles.push(new Obstacle());
+    updateBooks(); updateObstacles(); updatePowerUps();
+  } else if (gameMode === "dodge") {
+    let spawnInterval = Math.floor(max(60, SPAWN_RATES.DODGE_OBSTACLES_INITIAL - elapsedTimeSeconds * 1.5));
+    if (frameCount % spawnInterval === 0) {
+      dodgeObstacles.push(new DodgeObstacle());
+    }
+    updateDodgeObstacles();
+  }
+
+  drawGameUI();
+
+  if (gameMode === "collect" && (score1 >= 20 || (moto2 && score2 >= 20))) gameState = "gameover";
+}
+
+function updateAchievements(time) {
+  for (let ach of currentAchievements) {
+    if (!ach.unlocked && time >= ach.time) {
+      ach.unlocked = true; achievementMessage = ach.message; achievementMessageTimeout = millis() + 3500;
+    }
+  }
+}
+
+function updateBooks() {
+  for (let i = books.length - 1; i >= 0; i--) {
+    books[i].update();
+    if (magnetEffect1 && dist(books[i].x, books[i].y, moto1.x, moto1.y) < 150) { books[i].x = lerp(books[i].x, moto1.x, 0.05); books[i].y = lerp(books[i].y, moto1.y, 0.05); }
+    if (moto2 && magnetEffect2 && dist(books[i].x, books[i].y, moto2.x, moto2.y) < 150) { books[i].x = lerp(books[i].x, moto2.x, 0.05); books[i].y = lerp(books[i].y, moto2.y, 0.05); }
+    books[i].show();
+    if (books[i].hits(moto1)) { score1 += doublePointsEffect1 ? 2 : 1; books.splice(i, 1); }
+    else if (moto2 && books[i].hits(moto2)) { score2 += doublePointsEffect2 ? 2 : 1; books.splice(i, 1); }
+    else if (books[i].offScreen()) books.splice(i, 1);
+  }
+}
+
+function updatePowerUps() {
+  for (let i = powerUps.length - 1; i >= 0; i--) {
+    powerUps[i].update(); powerUps[i].show();
+    if (powerUps[i].hits(moto1)) { powerUps[i].applyEffect(1); powerUps.splice(i, 1); }
+    else if (moto2 && powerUps[i].hits(moto2)) { powerUps[i].applyEffect(2); powerUps.splice(i, 1); }
+    else if (powerUps[i].offScreen()) powerUps.splice(i, 1);
+  }
+}
+
+function updateObstacles() {
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    obstacles[i].update(); obstacles[i].show();
+    if (obstacles[i].hits(moto1)) { if (!shieldEffect1) score1 = max(0, score1 - 1); obstacles.splice(i, 1); }
+    else if (moto2 && obstacles[i].hits(moto2)) { if (!shieldEffect2) score2 = max(0, score2 - 1); obstacles.splice(i, 1); }
+    else if (obstacles[i].offScreen()) obstacles.splice(i, 1);
+  }
+}
+
+function updateDodgeObstacles() {
+  for (let i = dodgeObstacles.length - 1; i >= 0; i--) {
+    dodgeObstacles[i].update();
+    dodgeObstacles[i].show();
+    if (dodgeObstacles[i].hits(moto1)) {
+      score1 = -1; gameState = "gameover"; return;
+    } else if (dodgeObstacles[i].offScreen()) {
+      dodgeObstacles.splice(i, 1);
+    }
+  }
+}
+
+function drawGameUI() {
+  fill(0, 0, 0, 100); rect(0, 0, width, 80); textAlign(LEFT); textSize(16);
+  textFont('sans-serif');
+  if (gameMode === "dodge") {
+    fill(100, 150, 255); text(`${player1Name}: ${score1 === -1 ? "DERROTADO" : score1 + "s"}`, 20, 35);
+    fill(255, 200, 100); text(`Vel. Obstáculos: ${obstáculosBaseSpeed.toFixed(1)}`, width - 200, 35);
+  } else {
+    fill(100, 150, 255); text(`${player1Name}: ${score1}`, 20, 25);
+    if (moto2) { fill(255, 100, 150); text(`${player2Name}: ${score2}`, 20, 45); }
+    fill(255, 255, 0); let timeLeft = max(0, GAME_DURATION - (millis() - gameStartTime)); let secs = ceil(timeLeft / 1000);
+    textAlign(RIGHT); text(`Tiempo: ${secs}s`, width - 20, 25); textAlign(LEFT);
+    fill(255, 200, 100); text(`Vel. Libros: ${obstáculosBaseSpeed.toFixed(1)}`, width - 200, 45);
+  }
+  fill(255, 215, 0); text(`Modo: ${gameMode === "collect" ? "RECOLECTAR" : "ESQUIVAR"}`, 20, 65);
+  if (gameMode === "collect") drawEffectIndicators();
+  drawUnlockedAchievementsList();
+}
+
+function drawUnlockedAchievementsList() {
+  if (gameMode === "dodge") {
+    let unlockedY = 100;
+    fill(55, 253, 0, 190); textSize(11); textAlign(LEFT);
+    text("Logros Desbloqueados:", 20, unlockedY); unlockedY += 14;
+    for (let ach of currentAchievements) {
+      if (ach.unlocked) { text(`- ${ach.name}`, 25, unlockedY); unlockedY += 14; }
+    }
+  }
+}
+
+function drawEffectIndicators() {
+  let indicatorY = groundY + 30; let indicatorSize = 12; let spacing = 18; let startX1 = 20;
+  textAlign(CENTER); textSize(10);
+  let count1 = 0;
+  if (magnetEffect1) { fill(100, 150, 255); ellipse(startX1 + count1 * spacing, indicatorY, indicatorSize, indicatorSize); fill(255); text("M", startX1 + count1 * spacing, indicatorY + 3); count1++; }
+  if (jumpEffect1) { fill(255, 215, 0); ellipse(startX1 + count1 * spacing, indicatorY, indicatorSize, indicatorSize); fill(0); text("J", startX1 + count1 * spacing, indicatorY + 3); count1++; }
+  if (shieldEffect1) { fill(0, 255, 255); ellipse(startX1 + count1 * spacing, indicatorY, indicatorSize, indicatorSize); fill(0); text("S", startX1 + count1 * spacing, indicatorY + 3); count1++; }
+  if (speedEffect1) { fill(255, 100, 255); ellipse(startX1 + count1 * spacing, indicatorY, indicatorSize, indicatorSize); fill(255); text("V", startX1 + count1 * spacing, indicatorY + 3); count1++; }
+  if (doublePointsEffect1) { fill(255, 255, 100); ellipse(startX1 + count1 * spacing, indicatorY, indicatorSize, indicatorSize); fill(0); text("2X", startX1 + count1 * spacing, indicatorY + 3); count1++; }
+
+  if (moto2) {
+    let startX2 = width - (5 * spacing) - 20; let count2 = 0;
+    if (magnetEffect2) { fill(255, 100, 150); ellipse(startX2 + count2 * spacing, indicatorY, indicatorSize, indicatorSize); fill(255); text("M", startX2 + count2 * spacing, indicatorY + 3); count2++; }
+    if (jumpEffect2) { fill(255, 215, 0); ellipse(startX2 + count2 * spacing, indicatorY, indicatorSize, indicatorSize); fill(0); text("J", startX2 + count2 * spacing, indicatorY + 3); count2++; }
+    if (shieldEffect2) { fill(0, 255, 255); ellipse(startX2 + count2 * spacing, indicatorY, indicatorSize, indicatorSize); fill(0); text("S", startX2 + count2 * spacing, indicatorY + 3); count2++; }
+    if (speedEffect2) { fill(255, 100, 255); ellipse(startX2 + count2 * spacing, indicatorY, indicatorSize, indicatorSize); fill(255); text("V", startX2 + count2 * spacing, indicatorY + 3); count2++; }
+    if (doublePointsEffect2) { fill(255, 255, 100); ellipse(startX2 + count2 * spacing, indicatorY, indicatorSize, indicatorSize); fill(0); text("2X", startX2 + count2 * spacing, indicatorY + 3); count2++; }
+  }
+}
+
+function drawGameOver() {
+  fill(0, 0, 0, 180); rect(0, 0, width, height);
+
+  if (fontLoaded) {
+    textFont(titleFont);
+  } else {
+    textFont('sans-serif');
+  }
+  fill(255, 100, 100); textAlign(CENTER); textSize(80);
+  text("¡JUEGO TERMINADO!", width / 2, height / 2 - 100);
+
+  textFont('sans-serif');
+  textSize(24); fill(255);
+
+  if (gameMode === "collect") {
+    text(`${player1Name}: ${score1} puntos`, width / 2, height / 2 - 50);
+    if (player2Name) text(`${player2Name}: ${score2} puntos`, width / 2, height / 2 - 20);
+    textSize(38);
+    if (score1 > score2) { fill(100, 255, 100); text(`🏆 ¡${player1Name} GANA! 🏆`, width / 2, height / 2 + 20); }
+    else if (score2 > score1) { fill(100, 255, 100); text(`🏆 ¡${player2Name} GANA! 🏆`, width / 2, height / 2 + 20); }
+    else { fill(255, 255, 100); text("🤝 ¡EMPATE! 🤝", width / 2, height / 2 + 20); }
+  } else {
+    text(`${player1Name} sobrevivió:`, width / 2, height / 2 - 50); textSize(40); fill(100, 255, 100);
+    text(`${floor(elapsedTimeSeconds)} segundos`, width / 2, height / 2 - 10); textSize(18); fill(255);
+    let achievementsEarned = currentAchievements.filter(a => a.unlocked).map(a => a.name).join(", ");
+    if (achievementsEarned) text("Logros: " + achievementsEarned, width / 2, height / 2 + 30);
+    else text("¡Sigue intentando para desbloquear logros!", width / 2, height / 2 + 30);
+  }
+  textSize(16); fill(200); text("Presiona R para reiniciar o M para volver al menú", width / 2, height / 2 + 70);
+}
+
+function keyPressed() {
+  switch (gameState) {
+    case "menu": 
+      // MODIFICADO: ENTER ahora lleva a la pantalla informativa
+      if (keyCode === ENTER) gameState = "infoScreen"; 
+      else if (key === ' ') { gameMode = "collect"; startQuickGame(); } 
+      break;
+    // NUEVO: Lógica para la pantalla informativa
+    case "infoScreen":
+        if(keyCode === ENTER) {
+            gameState = "modeSelect";
+        }
+        break;
+    case "modeSelect": 
+      if (key === '1') gameMode = "collect"; 
+      else if (key === '2') gameMode = "dodge"; 
+      else if (keyCode === ENTER) { gameState = "nameInput"; currentInputPlayer = 1; nameInputs = ["", ""]; }
+      else if (keyCode === ESCAPE) { gameState = "menu"; }
+      break;
+    case "nameInput":
+      if (keyCode === ENTER) {
+        if (currentInputPlayer === 1) {
+          player1Name = nameInputs[0].trim() || (gameMode === "dodge" ? "Lector Intrépido" : "Jugador 1");
+          if (gameMode === "dodge") { player2Name = ""; startGame(); } else currentInputPlayer = 2;
+        } else { player2Name = nameInputs[1].trim() || "Jugador 2"; startGame(); }
+      } else if (keyCode === BACKSPACE) { 
+        if (nameInputs[currentInputPlayer - 1].length > 0) nameInputs[currentInputPlayer - 1] = nameInputs[currentInputPlayer - 1].slice(0, -1);
+      } else if (key.length === 1 && nameInputs[currentInputPlayer - 1].length < 15 && key.match(/[a-zA-Z0-9 áéíóúÁÉÍÓÚñÑüÜ]/)) {
+        nameInputs[currentInputPlayer - 1] += key;
+      }
+      break;
+    case "playing":
+      if (keyCode === ESCAPE) {
+        pauseStartTime = millis();
+        gameState = "paused";
+      }
+      if (moto1 && keyCode === moto1.upKey) {
+        if (gameMode === "dodge") {
+          if (moto1.jumpsMade < moto1.maxJumps) {
+            moto1.vy = moto1.jumpForce;
+            moto1.jumpsMade++;
+            moto1.fastFallActive = false;
+          }
+        } else if (gameMode === "collect") {
+          if (jumpEffect1 && moto1.jumpsMade < moto1.maxJumps) {
+            moto1.vy = moto1.jumpForce;
+            moto1.jumpsMade++;
+          }
+        }
+      }
+      if (gameMode === "collect" && moto2 && keyCode === moto2.upKey) {
+        if (jumpEffect2 && moto2.jumpsMade < moto2.maxJumps) {
+          moto2.vy = moto2.jumpForce;
+          moto2.jumpsMade++;
+        }
+      }
+      if (gameMode === "dodge" && moto1 && keyCode === DOWN_ARROW) moto1.fastFallActive = true;
+      break;
+    case "paused":
+      if (keyCode === ESCAPE) {
+        let pauseDuration = millis() - pauseStartTime;
+        gameStartTime += pauseDuration;
+        gameState = "playing";
+      } else if (key === 'r' || key === 'R') {
+        resetGame(); 
+        startGame();
+      } else if (key === 'm' || key === 'M') {
+        resetGame(); 
+        gameState = "menu";
+      }
+      break;
+    case "gameover": 
+      if (key === 'r' || key === 'R') { resetGame(); startGame(); } 
+      else if (key === 'm' || key === 'M') { resetGame(); gameState = "menu"; } 
+      break;
+  }
+}
+
+function keyReleased() {
+  if (gameState === "playing") {
+    if (gameMode === "dodge" && moto1 && keyCode === DOWN_ARROW) moto1.fastFallActive = false;
+  }
+}
+
+function startQuickGame() {
+  gameMode = "collect"; player1Name = "Jugador 1"; player2Name = "Jugador 2"; resetGame(); startGame();
+}
+
+function startGame() {
+  gameState = "playing"; gameStartTime = millis(); elapsedTimeSeconds = 0;
+  obstáculosBaseSpeed = (gameMode === "dodge" ? 14.0 : 5);
+
+  if (gameMode === "dodge") {
+    score1 = 0; moto2 = null;
+    if (!moto1 || moto1.playerName !== player1Name) moto1 = new Moto(width / 4, null, null, UP_ARROW, player1Name);
+    moto1.initialX = width / 4; 
+    moto1.x = moto1.initialX;
+    moto1.jumpsMade = 0;
+  } else {
+    score1 = 0; score2 = 0;
+    if (!moto1 || moto1.playerName !== player1Name) moto1 = new Moto(width / 4, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, player1Name);
+    if (!moto2 || moto2.playerName !== player2Name) moto2 = new Moto((3 * width) / 4, 65, 68, 87, player2Name); // A, D, W
+    if(moto1) moto1.jumpsMade = 0;
+    if(moto2) moto2.jumpsMade = 0;
+  }
+  initializeAchievements(); achievementMessage = "";
+}
+
+function resetGame() {
+  score1 = 0; elapsedTimeSeconds = 0; books = []; powerUps = []; obstacles = []; dodgeObstacles = [];
+  obstáculosBaseSpeed = (gameMode === "dodge" ? 3.0 : 5);
+
+  magnetEffect1 = false; jumpEffect1 = false; shieldEffect1 = false; speedEffect1 = false; doublePointsEffect1 = false;
+
+  if (gameMode === "collect") {
+    score2 = 0; magnetEffect2 = false; jumpEffect2 = false; shieldEffect2 = false; speedEffect2 = false; doublePointsEffect2 = false;
+    moto1 = new Moto(width / 4, LEFT_ARROW, RIGHT_ARROW, UP_ARROW, player1Name || "Jugador 1");
+    moto2 = new Moto((3 * width) / 4, 65, 68, 87, player2Name || "Jugador 2");
+  } else {
+    moto1 = new Moto(width / 4, null, null, UP_ARROW, player1Name || "Lector Intrépido");
+    moto1.initialX = width / 4;
+    moto1.x = moto1.initialX;
+    moto2 = null;
+  }
+  if(moto1) moto1.jumpsMade = 0;
+  if(moto2) moto2.jumpsMade = 0;
+
+  initializeAchievements(); achievementMessage = "";
+}
+
+function collideRectRect(x1, y1, w1, h1, x2, y2, w2, h2) { return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2; }
+
+class Moto {
+  constructor(x, leftKey, rightKey, upKey, playerName) {
+    this.initialX = x; this.x = x; this.y = groundY - 40; this.vy = 0;
+    this.gravity = 0.65;
+    this.width = 90; this.height = 100;
+    this.leftKey = leftKey; this.rightKey = rightKey; this.upKey = upKey;
+    this.playerName = playerName; this.baseSpeed = 8;
+    this.jumpForce = -15; 
+    this.jumpsMade = 0;  
+    this.maxJumps = 2;   
+    this.fastFallActive = false;
+    this.fastFallGravityMultiplier = 2.5;
+  }
+
+  update() {
+    let currentSpeed = this.baseSpeed;
+    if ((this.playerName === player1Name && speedEffect1) || (this.playerName === player2Name && speedEffect2)) currentSpeed = this.baseSpeed * 1.8;
+
+    if (gameMode !== "dodge") {
+      if (keyIsDown(this.leftKey)) this.x -= currentSpeed;
+      if (keyIsDown(this.rightKey)) this.x += currentSpeed;
+      this.x = constrain(this.x, 0, width - this.width);
+    } else {
+      this.x = this.initialX;
+    }
+
+    let currentGravity = this.gravity;
+    if (this.fastFallActive && !this.onGround() && gameMode === "dodge") {
+      currentGravity *= this.fastFallGravityMultiplier;
+      if (this.vy < 0) this.vy = 0;
+    }
+    this.vy += currentGravity;
+    this.y += this.vy;
+
+    if (this.onGround()) {
+      this.vy = 0; this.y = groundY - this.height;
+      this.jumpsMade = 0; 
+      this.fastFallActive = false;
+    }
+  }
+
+  onGround() { return this.y >= groundY - this.height - 0.1; }
+
+  show() {
+    if (((this.playerName === player1Name && shieldEffect1) || (this.playerName === player2Name && shieldEffect2)) && gameMode === "collect") {
+      push(); stroke(0, 255, 255, 200); strokeWeight(3); noFill();
+      ellipse(this.x + this.width / 2, this.y + this.height / 2, this.width + 15, this.height + 15); pop();
+    }
+    if (((this.playerName === player1Name && speedEffect1) || (this.playerName === player2Name && speedEffect2)) && gameMode === "collect") {
+      push(); for (let i = 0; i < 3; i++) { fill(255, 100, 255, 80 - i * 20); noStroke(); ellipse(this.x - i * 10 + this.width / 2, this.y + this.height / 2, 10, 20); } pop();
+    }
+    image(motoImg, this.x, this.y, this.width, this.height);
+    fill(255); textAlign(CENTER); textSize(18);
+    textFont('sans-serif');
+    text(this.playerName, this.x + this.width / 2, this.y - 8);
+  }
+}
+
+class Book {
+  constructor() { this.x = random(50, width - 50); this.y = -30; this.width = 40; this.height = 50; }
+  update() { this.y += obstáculosBaseSpeed; }
+  show() { if (doublePointsEffect1 || doublePointsEffect2) { push(); stroke(255, 255, 0); strokeWeight(2); noFill(); rect(this.x - 2, this.y - 2, this.width + 4, this.height + 4); pop(); } image(bookImg, this.x, this.y, this.width, this.height); }
+  offScreen() { return this.y > height; }
+  hits(moto) { return collideRectRect(this.x, this.y, this.width, this.height, moto.x, moto.y, moto.width, moto.height); }
+}
+
+class PowerUp {
+  constructor() { this.x = random(50, width - 50); this.y = -30; this.width = 40; this.height = 50; let types = ["magnet", "jump", "shield", "speed", "doublePoints"]; this.type = random(types); }
+  update() { this.y += obstáculosBaseSpeed * 0.8; }
+  show() {
+    push(); translate(this.x + this.width / 2, this.y + this.height / 2); rotate(frameCount * 0.03);
+    let alpha = 200 + sin(frameCount * 0.1) * 55; let imgToShow; let tintColor;
+    switch (this.type) {
+      case "magnet": imgToShow = magnetImg; tintColor = color(100, 150, 255, alpha); break;
+      case "jump": imgToShow = jumpImg; tintColor = color(255, 215, 0, alpha); break;
+      case "shield": imgToShow = shieldImg; tintColor = color(0, 255, 255, alpha); break;
+      case "speed": imgToShow = speedImg; tintColor = color(255, 100, 255, alpha); break;
+      case "doublePoints": imgToShow = doublePointsImg; tintColor = color(255, 255, 100, alpha); break;
+      default: imgToShow = shieldImg; tintColor = color(200, 200, 200, alpha); break;
+    }
+    tint(tintColor); image(imgToShow, -this.width / 2, -this.height / 2, this.width, this.height); noTint(); pop();
+    fill(255); textAlign(CENTER); textSize(10); let label = "";
+    textFont('sans-serif');
+    switch (this.type) {
+      case "magnet": label = "M"; break; case "jump": label = "J"; break; case "shield": label = "S"; break;
+      case "speed": label = "V"; break; case "doublePoints": label = "2X"; break;
+    }
+    text(label, this.x + this.width / 2, this.y + this.height + 12);
+  }
+  offScreen() { return this.y > height; }
+  hits(moto) { return collideRectRect(this.x, this.y, this.width, this.height, moto.x, moto.y, moto.width, moto.height); }
+  applyEffect(player) {
+    let duration;
+    let targetPlayerEffect = (p, effectType, value, dur) => {
+      if (p === 1) {
+        if (effectType === "magnet") magnetEffect1 = value;
+        else if (effectType === "jump") jumpEffect1 = value;
+        else if (effectType === "shield") shieldEffect1 = value;
+        else if (effectType === "speed") speedEffect1 = value;
+        else if (effectType === "doublePoints") doublePointsEffect1 = value;
+      } else if (p === 2 && gameMode === "collect") {
+        if (effectType === "magnet") magnetEffect2 = value;
+        else if (effectType === "jump") jumpEffect2 = value;
+        else if (effectType === "shield") shieldEffect2 = value;
+        else if (effectType === "speed") speedEffect2 = value;
+        else if (effectType === "doublePoints") doublePointsEffect2 = value;
+      }
+      if (value) setTimeout(() => targetPlayerEffect(p, effectType, false, 0), dur);
+    };
+    switch (this.type) {
+      case "magnet": duration = MAGNET_DURATION; targetPlayerEffect(player, "magnet", true, duration); break;
+      case "jump": duration = JUMP_DURATION; if (gameMode === "collect") targetPlayerEffect(player, "jump", true, duration); break;
+      case "shield": duration = SHIELD_DURATION; targetPlayerEffect(player, "shield", true, duration); break;
+      case "speed": duration = SPEED_DURATION; targetPlayerEffect(player, "speed", true, duration); break;
+      case "doublePoints": duration = DOUBLE_POINTS_DURATION; if (gameMode === "collect") targetPlayerEffect(player, "doublePoints", true, duration); break;
+    }
+  }
+}
+
+class Obstacle {
+  constructor() { this.x = random(50, width - 50); this.y = -30; this.width = 50; this.height = 50; }
+  update() { this.y += obstáculosBaseSpeed * 1.2; }
+  show() { push(); tint(255, 100 + sin(frameCount * 0.2) * 155, 100 + sin(frameCount * 0.2) * 155); image(obstacleImg, this.x, this.y, this.width, this.height); noTint(); pop(); }
+  offScreen() { return this.y > height; }
+  hits(moto) { return collideRectRect(this.x, this.y, this.width, this.height, moto.x, moto.y, moto.width, moto.height); }
+}
+
+class DodgeObstacle {
+  constructor() {
+    this.x = width;
+    this.width = 40;
+    this.height = 50;
+    this.y = groundY - this.height; 
+  }
+  update() {
+    this.x -= obstáculosBaseSpeed;
+  }
+  show() {
+    image(dodgeObstacleImg, this.x, this.y, this.width, this.height);
+    if (this.y + this.height >= groundY) {
+      fill(0, 0, 0, 50);
+      noStroke();
+      ellipse(this.x + this.width / 2, groundY - 2, this.width * 0.8, 8);
+    }
+  }
+  offScreen() {
+    return this.x < -this.width;
+  }
+  hits(moto) {
+    return collideRectRect(this.x, this.y, this.width, this.height, moto.x, moto.y, moto.width, moto.height);
+  }
+}
